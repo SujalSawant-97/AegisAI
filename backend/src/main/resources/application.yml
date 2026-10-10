@@ -1,0 +1,22 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: security-backend
+  data:
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/security_engine_db}
+      auto-index-creation: true
+
+security:
+  engine:
+    fastapi-url: ${SECURITY_ENGINE_FASTAPI_URL:http://localhost:8000}
+    timeout-seconds: 180
+    max-in-memory-size-mb: 16
+
+logging:
+  level:
+    root: INFO
+    com.security.engine: DEBUG
+    org.springframework.data.mongodb: INFO
