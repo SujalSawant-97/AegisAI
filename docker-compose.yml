@@ -1,0 +1,129 @@
+services:
+  # ============================================================================
+  # 1. MongoDB Database (Optional Container)
+  # NOTE: Commented out because local MongoDB is installed directly on your machine.
+  # The backend connects to your local MongoDB via host.docker.internal:27017.
+  # If someone wants to use a containerized MongoDB instead, uncomment this block,
+  # the 'mongodb' dependency under 'backend', and the 'mongodb_data' volume at the bottom.
+  # ============================================================================
+  # mongodb:
+  #   image: mongo:7.0
+  #   container_name: secengine-mongodb
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     - MONGO_INITDB_DATABASE=security_engine_db
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   networks:
+  #     - secengine-net
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
+
+  # ============================================================================
+  # 2. Python Security Engine & LangGraph Agent (Port 8000)
+  # ============================================================================
+  security-engine:
+    image: ${DOCKER_HUB_USER:-sujal}/secengine-engine:latest
+    build:
+      context: ./security-engine
+      dockerfile: Dockerfile
+    container_name: secengine-engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - AUTO_MAP_LOCALHOST_TO_HOST_DOCKER_INTERNAL=${AUTO_MAP_LOCALHOST_TO_HOST_DOCKER_INTERNAL:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - secengine-net
+
+  # ============================================================================
+  # 3. Spring Boot Backend Orchestrator (Port 8081)
+  # ============================================================================
+  backend:
+    image: ${DOCKER_HUB_USER:-sujal}/secengine-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: secengine-backend
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      # Connects to your local MongoDB on Windows host machine:
+      - SPRING_DATA_MONGODB_URI=${SPRING_DATA_MONGODB_URI:-mongodb://host.docker.internal:27017/security_engine_db}
+      - SECURITY_ENGINE_FASTAPI_URL=http://security-engine:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      # mongodb:
+      #   condition: service_healthy
+      security-engine:
+        condition: service_started
+    networks:
+      - secengine-net
+
+  # ============================================================================
+  # 4. React Frontend (Port 5173 mapped to Nginx Port 80)
+  # ============================================================================
+  frontend:
+    image: ${DOCKER_HUB_USER:-sujal}/secengine-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=/api
+    container_name: secengine-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - secengine-net
+
+  # ============================================================================
+  # 5. Built-in Vulnerable Test Target (Port 8082)
+  # ============================================================================
+  vulnerable-app:
+    image: ${DOCKER_HUB_USER:-sujal}/secengine-vulnerable-app:latest
+    build:
+      context: ./vulnerable-app
+      dockerfile: Dockerfile
+    container_name: secengine-vulnerable-app
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    networks:
+      - secengine-net
+
+  # ============================================================================
+  # 6. OWASP Juice Shop Target (Port 3000)
+  # ============================================================================
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: secengine-juice-shop
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - secengine-net
+
+networks:
+  secengine-net:
+    driver: bridge
+
+# Uncomment if you enable the containerized MongoDB service above:
+# volumes:
+#   mongodb_data:
+#     driver: local
