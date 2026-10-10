@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.git/
+.idea/
+.env
+Security_Engine_Project_Documentation.pdf
+generate_pdf.py
